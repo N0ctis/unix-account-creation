@@ -1,0 +1,71 @@
+# !/bin/bash
+
+#Script de création d'utilisateur et groupe.
+#Nom, Prenom, GID, UID
+
+clear
+
+echo "Assistant de création d'utilisateur"
+echo ""
+echo "Attention ne pas mettre d'espace dans les champs qui suivent."
+echo ""
+echo -n "Nom de l'utilisateur : ";read v_nomuser
+echo -n "Prenom de l'utilisateur : ";read v_prenomuser
+echo -n "Groupe de l'utilisateur : ";read v_groupe
+
+v_uid=`tail -1 /etc/passwd|cut -d : -f3`
+v_gid=`cat /etc/group|grep $v_groupe|cut -d : -f3`
+v_lastuid=`cat /etc/passwd|grep $v_gid|cut -d : -f3|tail -1`
+v_n1=${v_nomuser:0:1}
+v_login=$v_n1$v_prenomuser$(($RANDOM%99))
+v_uincre=$[v_uid+1]
+v_userexiste=`cat /etc/passwd|grep $v_login|cut -d : -f1`
+v_groupexiste=`cat /etc/group|grep $v_groupe|cut -d : -f1`
+
+echo "Vous êtes sur le point de créer l'utilisateur : "
+echo "          Login :                                 $v_login"
+echo "          Nom  :                                  $v_nomuser"
+echo "          Prenom :                                $v_prenomuser"
+echo "          UID :                                   $v_uincre"
+echo "          Répertoire personnel :  /home/$v_login"
+echo "          Groupe :                                $v_groupe"
+
+echo -n "Ces informations sont-elles correctes ? (o/n) ";read v_correct
+
+if [ "$v_correct" = "n" ]
+then
+  echo "Les informations son incorrectes et le programme va alors fermer."
+  sleep 2
+  exit
+elif [ "$v_correct" = "o" ]
+then
+  if [ "$v_login" = "$v_userexiste" ]
+  then
+    echo "L'utilisateur existe déjà et le programme va fermer."
+    sleep 2
+    exit
+  else
+    if [ "$v_groupe" = "$v_groupexiste" ]
+    then
+      echo "Le groupe : $v_groupe existe déjà, l'utilisateur $v_login va être créé et ajouté à ce groupe."
+      useradd -g $v_groupe -u $v_uincre -c "$v_nomuser $v_prenomuser" -m -d /home/$v_login -p $v_login $v_login
+      echo $v_login | passwd $v_login --stdin
+      passwd -e $v_login
+      echo "L'utilisateur $v_login à été créé et le programme va fermer."
+      sleep 3
+      exit
+    else
+      echo "Le groupe : $v_groupe n'existe pas et va être créé."
+      v_gid=`tail -1 /etc/group| -d : -f3`
+      v_gincre=$[v_gid+1000]
+      groupadd -g $v_gincre -o $v_groupe
+      echo "L'utilisateur va maintenant être créé."
+      useradd -g $v_groupe -u $v_uincre -c "$v_nomuser $v_prenomuser" -m -d /home/$v_login -p $v_login $v_login
+      echo $v_login | passwd $v_login --stdin
+      passwd -e $v_login
+      echo "Le groupe et l'utilisateur ont correctement été créé, le programme va fermer."
+      sleep 3
+      exit
+    fi
+  fi
+fi
