@@ -1,0 +1,144 @@
+#!/bin/bash
+#Script de création d'utilisateur et groupe.
+clear
+# Fichier .csv
+v_csv=/root/scripts/compte.txt
+# Compter le nombre de ligne dans compte.txt
+v_nbline=`cat /root/scripts/compte.txt|wc -l`
+i=1
+#######
+## Boucle générale du script, avec incrémentation de i, quand i=nombre de ligne - STOP
+until [ $i -gt $v_nbline ]
+do
+clear
+###
+# Lecture de la ligne $i du fichier compte.txt et affectation des valeurs dans les variables
+v_nomuser=`sed -n "$i p" $v_csv|cut -d ';' -f1`
+v_prenomuser=`sed -n "$i p" $v_csv|cut -d ';' -f2`
+v_groupe=`sed -n "$i p" $v_csv|cut -d ';' -f3`
+v_poste=`sed -n "$i p" $v_csv|cut -d ';' -f4`
+###
+
+v_uid=`tail -1 /etc/passwd|cut -d : -f3`
+v_gid=`cat /etc/group|grep $v_groupe|cut -d : -f3`
+v_lastgid=`tail -1 /etc/group|cut -d : -f3`
+if [ "$v_gid" = "" ]
+# Si le groupe n'est pas trouvé le GID = ""
+then
+  v_gid=$[v_lastgid+1000]
+else
+# Si le groupe est trouvé, récupère le GID
+  v_gid=`cat /etc/group|grep $v_groupe|cut -d : -f3`
+fi
+
+v_lastuid=`cat /etc/passwd|grep $v_gid|cut -d : -f3|tail -1`
+v_n1=${v_nomuser:0:1}
+v_login=$v_n1$v_prenomuser$(($RANDOM%99))
+v_ip=${v_poste:2}
+
+if [ "$v_lastuid" = "" ]
+# Si le groupe n'existait pas et v_lastuid = ""
+then
+  v_uincre=$[v_gid+1]
+else
+  v_uincre=$[v_lastuid+1]
+fi
+
+v_userexiste=`cat /etc/passwd|grep $v_login|cut -d : -f1`
+v_groupexiste=`cat /etc/group|grep $v_groupe|cut -d : -f1`
+# Groupe machine
+v_groupemachineexiste=`cat /etc/group|grep machine|cut -d : -f3`
+v_lastuidmachine=`cat /etc/passwd|grep 50000|cut -d : -f3|tail -1`
+v_gidm=50000
+if [ "$v_lastuidmachine" = "" ]
+# Si le groupe n'existait pas et v_lastuidmachine = ""
+then
+  v_uincrem=$[v_gidm+1]
+else
+  v_uincrem=$[v_lastuidmachine+1]
+fi
+
+
+echo "Vous êtes sur le point de créer l'utilisateur : "
+echo "  Login :                 $v_login"
+echo "  Nom  :                  $v_nomuser"
+echo "  Prenom :                $v_prenomuser"
+echo "  UID :                   $v_uincre"
+echo "  GID :                   $v_gid"
+echo "  Groupe :                $v_groupe"
+echo "  Nom de poste :          $v_poste"
+echo "  Répertoire personnel :  /home/$v_login"
+
+echo -n "Ces informations sont-elles correctes ? (o/n) ";read v_correct
+
+if [ "$v_correct" = "n" ]
+then
+      echo "Les informations son incorrectes et le programme va alors fermer."
+      sleep 2
+      exit
+elif [ "$v_correct" = "o" ]
+then
+      if [ "$v_login" = "$v_userexiste" ]
+      then
+        echo "L'utilisateur existe déjà, lecture de la ligne suivante."
+        sleep 2
+else
+        if [ "$v_groupe" = "$v_groupexiste" ]
+        then
+          echo "Le groupe : $v_groupe existe déjà, l'utilisateur $v_login va être créé et ajouté à ce groupe."
+          useradd -g $v_groupe -u $v_uincre -c "$v_nomuser $v_prenomuser" -m -d /home/$v_login -p $v_login $v_login
+          echo $v_login | passwd $v_login --stdin
+          passwd -e $v_login
+        	#pdbedit -a -u $v_login
+		      echo -e $v_login \\n$v_login \\n | /usr/bin/smbpasswd -s -a $v_login
+		      echo "L'utilisateur $v_login à été créé sur Unix et Samba."
+		      if [ "$v_gidm" = "$v_groupemachineexiste" ]
+      		# Si le groupe " machine " existe, on ajoute le poste dans le groupe
+      		then
+      			useradd -g machine -u $v_uincrem -M -s /sbin/nologin $v_poste"$"
+      			pdbedit -a -m $v_poste"$"
+      			echo $v_poste".domain.local. IN A 192.168.1."$v_ip >> /var/named/domain.local
+      			echo "La machine $v_poste à été créé, ajouté à Unix, Samba et au DNS, lecture de la ligne suivante."
+            sleep 3
+      		else
+      		# Création du groupe " machine " et ajout de la machine.
+      			groupadd -g $v_gidm machine
+      			useradd -g machine -u $v_uincrem -M -s /sbin/nologin $v_poste"$"
+            pdbedit -a -m $v_poste"$"
+            echo $v_poste".domain.local. IN A 192.168.1."$v_ip >> /var/named/domain.local
+            echo "Le groupe machine et la machine $v_poste ont été créé, ajouté à Unix, Samba et au DNS, lecture de la ligne suivante."
+      			sleep 3
+      		fi
+        else
+          echo "Le groupe : $v_groupe n'existe pas et va être créé."
+          v_gincre=$[v_gid+1000]
+          groupadd -g $v_gincre $v_groupe
+          echo "L'utilisateur va maintenant être créé."
+		      useradd -g $v_groupe -u $v_uincre -c "$v_nomuser $v_prenomuser" -m -d /home/$v_login -p $v_login $v_login
+          echo $v_login | passwd $v_login --stdin
+          passwd -e $v_login
+          #pdbedit -a -u $v_login
+		      echo -e $v_login\\n$v_login\\n | /usr/bin/smbpasswd -s -a $v_login
+          echo "L'utilisateur $v_login à été créé sur Unix et Samba."
+          if [ "$v_gidm" = "$v_groupemachineexiste" ]
+            # Si le groupe " machine " existe, on ajoute le poste dans le groupe
+            then
+                useradd -g machine -u $v_uincrem -M -s /sbin/nologin $v_poste"$"
+                pdbedit -a -m $v_poste"$"
+                echo $v_poste".domain.local. IN A 192.168.1."$v_ip >> /var/named/domain.local
+                echo "La machine $v_poste à été créé, ajouté à Unix, Samba et au DNS, lecture de la ligne suivante."
+                sleep 3
+            else
+            # Création du groupe " machine " et ajout de la machine.
+                groupadd -g $v_gid -o machine
+                useradd -g machine -u $v_uincrem -M -s /sbin/nologin $v_poste"$"
+                pdbedit -a -m $v_poste"$"
+                echo $v_poste".domain.local. IN A 192.168.1."$v_ip >> /var/named/domain.local
+                echo "Le groupe machine et la machine $v_poste ont été créé, ajouté à Unix, Samba et au DNS, lecture de la ligne suivante."
+                sleep 3
+          fi
+        fi
+      fi
+fi
+i=$[i+1]
+done
